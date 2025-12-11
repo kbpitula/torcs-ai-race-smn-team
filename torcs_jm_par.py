@@ -494,18 +494,16 @@ import math
 TARGET_SPEED = 100  # Target speed in km/h. Increasing this makes the car go faster but may reduce stability.
 STEER_GAIN = 10     # Steering sensitivity. Higher values make the car turn more aggressively.
 CENTERING_GAIN = 0.85  # How strongly the car corrects its position toward the center of the track.
-BRAKE_THRESHOLD = 0.60  # Angle threshold for braking. Lower values brake earlier.
+BRAKE_THRESHOLD = 0.90  # Angle threshold for braking. Lower values brake earlier.
 GEAR_SPEEDS = [0, 40, 70, 100, 130, 170]  # Speed thresholds for gear shifting.
 ENABLE_TRACTION_CONTROL = True  # Toggle traction control system.
 
 # ================= HELPER FUNCTIONS =================
 def calculate_steering(S):
-    print("Sterowanie")
     steer = (S['angle'] * STEER_GAIN / math.pi) - (S['trackPos'] * CENTERING_GAIN)
     return max(-1, min(1, steer))
 
 def calculate_throttle(S, R):
-    print("Przyspieszenie")
     if S['speedX'] < TARGET_SPEED - (R['steer'] * 2.5):
         accel = min(1.0, R['accel'] + 0.4)
     else:
@@ -515,11 +513,9 @@ def calculate_throttle(S, R):
     return max(0.0, min(1.0, accel))
 
 def apply_brakes(S):
-    print("Hamowanie")
     return 0.3 if abs(S['angle']) > BRAKE_THRESHOLD else 0.0
 
 def shift_gears(S):
-    print("Zmiana biegow")
     gear = 1
     for i, speed in enumerate(GEAR_SPEEDS):
         if S['speedX'] > speed:
@@ -527,7 +523,6 @@ def shift_gears(S):
     return min(gear, 6)
 
 def traction_control(S, accel):
-    print("Kontrola trakcji")
     if ENABLE_TRACTION_CONTROL:
         if ((S['wheelSpinVel'][2] + S['wheelSpinVel'][3]) - (S['wheelSpinVel'][0] + S['wheelSpinVel'][1])) > 2:
             accel -= 0.1
@@ -535,6 +530,8 @@ def traction_control(S, accel):
 
 # ================= MAIN DRIVE FUNCTION =================
 def drive_modular(c):
+    print("S =", c.S.d)
+    print("R =", c.R.d)
     S, R = c.S.d, c.R.d
     R['steer'] = calculate_steering(S)
     R['accel'] = calculate_throttle(S, R)
