@@ -4,6 +4,8 @@ import sys
 import getopt
 import os
 import time
+from shlex import join
+
 PI= 3.14159265359
 
 data_size = 2**17
@@ -27,6 +29,7 @@ def clip(v,lo,hi):
     if v<lo: return lo
     elif v>hi: return hi
     else: return v
+    a = 'ophelp --debug'
 
 def bargraph(x,mn,mx,w,c='X'):
     '''Draws a simple asciiart bar graph. Very handy for
@@ -407,7 +410,7 @@ class DriverAction():
         out= str()
         od= self.d.copy()
         od.pop('gear','') # Not interesting.
-        od.pop('meta','') # Not interesting.
+        od.pop('angle','') # Not interesting.
         od.pop('focus','') # Not interesting. Yet.
         for k in sorted(od):
             if k == 'clutch' or k == 'brake' or k == 'accel':
@@ -418,7 +421,9 @@ class DriverAction():
             else:
                 strout= str(od[k])
             out+= "%s: %s\n" % (k,strout)
+            # print(out)
         return out
+        print(out)
 
 def destringify(s):
     '''makes a string into a value or a list of strings into a list of
@@ -436,52 +441,6 @@ def destringify(s):
         else:
             return [destringify(i) for i in s]
 
-def drive_example(c):
-    '''This is only an example. It will get around the track but the
-    correct thing to do is write your own `drive()` function.'''
-    S,R= c.S.d,c.R.d
-    target_speed=160
-
-    R['steer']= S['angle']*25 / PI
-    R['steer']-= S['trackPos']*.25
-
-    R['accel'] = max(0.0, min(1.0, R['accel']))
-    
-
-    if S['speedX'] < target_speed - (R['steer']*2.5):
-        R['accel']+= .4
-    else:
-        R['accel']-= .2
-    if S['speedX']<10:
-       R['accel']+= 1/(S['speedX']+.1)
-
-    if ((S['wheelSpinVel'][2]+S['wheelSpinVel'][3]) -
-       (S['wheelSpinVel'][0]+S['wheelSpinVel'][1]) > 2):
-       R['accel']-= 0.1
-
-
-
-    R['gear']=1
-    if S['speedX']>60:
-        R['gear']=2
-    if S['speedX']>100:
-        R['gear']=3
-    if S['speedX']>140:
-        R['gear']=4
-    if S['speedX']>190:
-        R['gear']=5
-    if S['speedX']>220:
-        R['gear']=6
-    return
-
-# if __name__ == "__main__":
-#     C= Client(p=3001)
-#     for step in range(C.maxSteps,0,-1):
-#         C.get_servers_input()
-#         drive_example(C)
-#         C.respond_to_server()
-#     C.shutdown()
-
 
 
 #############################################
@@ -491,20 +450,23 @@ def drive_example(c):
 import math
 
 # ================= USER CONFIGURABLE PARAMETERS =================
-TARGET_SPEED = 100  # Target speed in km/h. Increasing this makes the car go faster but may reduce stability.
-STEER_GAIN = 10     # Steering sensitivity. Higher values make the car turn more aggressively.
-CENTERING_GAIN = 0.85  # How strongly the car corrects its position toward the center of the track.
-BRAKE_THRESHOLD = 0.90  # Angle threshold for braking. Lower values brake earlier.
-GEAR_SPEEDS = [0, 40, 70, 100, 130, 170]  # Speed thresholds for gear shifting.
-ENABLE_TRACTION_CONTROL = True  # Toggle traction control system.
+# ================= USER CONFIGURABLE PARAMETERS =================
+TARGET_SPEED = 180  # Target speed in km/h. Increasing this makes the car go faster but may reduce stability.
+STEER_GAIN = 45     # Steering sensitivity. Higher values make the car turn more aggressively.
+CENTERING_GAIN = 0.5  # How strongly the car corrects its position toward the center of the track.
+BRAKE_THRESHOLD = 0.1  # Angle threshold for braking. Lower values brake earlier.
+GEAR_SPEEDS = [0, 50, 80, 120, 170, 200]  # Speed thresholds for gear shifting.
+ENABLE_TRACTION_CONTROL = False  # Toggle traction control system.
 
 # ================= HELPER FUNCTIONS =================
 def calculate_steering(S):
-    steer = (S['angle'] * STEER_GAIN / math.pi) - (S['trackPos'] * CENTERING_GAIN)
-    return max(-1, min(1, steer))
+    steer = ((S['angle'] * STEER_GAIN / math.pi) - (S['trackPos'] * CENTERING_GAIN)) * 0.8
+    return max(-0.8, min(0.8, steer))
 
 def calculate_throttle(S, R):
-    if S['speedX'] < TARGET_SPEED - (R['steer'] * 2.5):
+    if ((S['distFromStart'] > 2380 and S['distFromStart'] < 2565 and S['speedX'] > 60) or (S['distFromStart'] > 1200 and S['distFromStart'] < 1350) and S['speedX'] > 80) or (abs(S['trackPos']) > 0.9 and S['speedX'] > 85 and S['distFromStart'] < 3000) :
+        accel = 0.0
+    elif S['speedX'] < TARGET_SPEED - (R['steer'] * 2.5):
         accel = min(1.0, R['accel'] + 0.4)
     else:
         accel = max(0.0, R['accel'] - 0.2)
@@ -513,7 +475,7 @@ def calculate_throttle(S, R):
     return max(0.0, min(1.0, accel))
 
 def apply_brakes(S):
-    return 0.3 if abs(S['angle']) > BRAKE_THRESHOLD else 0.0
+    return 0.35 if abs(S['angle']) > BRAKE_THRESHOLD and S['speedX'] > 40 else 0.0
 
 def shift_gears(S):
     gear = 1
@@ -530,8 +492,6 @@ def traction_control(S, accel):
 
 # ================= MAIN DRIVE FUNCTION =================
 def drive_modular(c):
-    print("S =", c.S.d)
-    print("R =", c.R.d)
     S, R = c.S.d, c.R.d
     R['steer'] = calculate_steering(S)
     R['accel'] = calculate_throttle(S, R)
@@ -539,12 +499,21 @@ def drive_modular(c):
     R['accel'] = traction_control(S, R['accel'])
     R['gear'] = shift_gears(S)
     return
-
+def output(c):
+    S, R = c.S.d, c.R.d
+    print(S['angle'], S['speedX'], S['trackPos'], S['distFromStart'], R['steer'])
+    g = (S['angle'], S['speedX'], S['trackPos'], S['distFromStart'], R['steer'])
+    s = join(str(word) for word in g)
+    with open('log.txt', 'a') as l:
+        l.write(f'{s}\n')
+    # return g
 # ================= MAIN LOOP =================
 if __name__ == "__main__":
     C = Client(p=3001)
+
     for step in range(C.maxSteps, 0, -1):
         C.get_servers_input()
         drive_modular(C)
         C.respond_to_server()
+        output(C)
     C.shutdown()
